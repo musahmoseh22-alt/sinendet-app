@@ -1,8 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1296881370405090"
-     crossorigin="anonymous"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sinendet Mixed Day Senior School — Project Log</title>
@@ -190,11 +188,17 @@
   .field-row{display:flex; gap:16px; flex-wrap:wrap; margin-bottom:14px;}
   .field{flex:1; min-width:180px;}
   .field label{display:block; font-size:0.76rem; font-weight:600; color:var(--ink-soft); margin-bottom:5px; text-transform:uppercase; letter-spacing:0.03em;}
-  .field input[type=text], .field input[type=number], .field input[type=password]{
+  .field input[type=text], .field input[type=number], .field input[type=password], .field select{
     width:100%; padding:10px 11px; border:1px solid #D7CFB6; border-radius:8px;
     font-family:inherit; font-size:0.92rem; background:var(--paper-dim); transition:border 0.15s ease;
   }
-  .field input:focus{outline:none; border-color:var(--blue); box-shadow:0 0 0 3px rgba(127,168,201,0.25);}
+  .field input:focus, .field select:focus{outline:none; border-color:var(--blue); box-shadow:0 0 0 3px rgba(127,168,201,0.25);}
+  #studentPicker{margin-bottom:10px; border-color:var(--blue); background:#fff;}
+  .task-row select.member-picker{flex:0 0 150px; max-width:150px; padding:8px 8px; border:1px solid #D7CFB6; border-radius:7px; font-family:inherit; font-size:0.82rem; background:#fff;}
+  @media (max-width: 560px){
+    .task-row.member-row{flex-wrap:wrap;}
+    .task-row select.member-picker{flex:1 1 100%; max-width:100%; order:-1; margin-bottom:4px;}
+  }
   .file-field{border:1.5px dashed #C9BF9E; border-radius:9px; padding:12px; background:var(--paper-dim);}
   .file-field small{display:block; color:var(--ink-soft); font-size:0.72rem; margin-top:4px;}
   .required-star{color:var(--pink);}
@@ -294,6 +298,13 @@
   .link-btn{background:none; border:none; font-size:0.78rem; cursor:pointer; padding:2px 0; text-decoration:underline;}
   .edit-btn{color:var(--blue);}
   .delete-btn{color:#B03A2E;}
+  .quick-add-task{margin-top:4px;}
+  .quick-add-task-btn{color:var(--motto-green); font-weight:600;}
+  .quick-task-form{display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:6px;}
+  .quick-task-form input[type=text]{flex:1 1 140px; min-width:100px; padding:7px 9px; border:1px solid #D7CFB6; border-radius:7px; font-family:inherit; font-size:0.85rem; background:#fff;}
+  .quick-task-form input[type=number]{flex:0 0 80px; width:80px; padding:7px 9px; border:1px solid #D7CFB6; border-radius:7px; font-family:inherit; font-size:0.85rem; background:#fff;}
+  .quick-task-form button{font-size:0.82rem; padding:7px 12px;}
+  .quick-task-status{font-size:0.78rem; color:#B03A2E; margin-top:4px; min-height:1em;}
   #empty-state{color:var(--ink-soft); font-size:0.9rem; padding:36px 4px; text-align:center; border:1px dashed #D7CFB6; border-radius:var(--radius); line-height:1.6;}
   #empty-state .empty-icon{font-size:2rem; margin-bottom:6px;}
   #empty-state .empty-sub{font-size:0.8rem; opacity:0.75; margin-top:2px;}
@@ -454,9 +465,12 @@
 
       <div class="field-row">
         <div class="field" id="individual-name-field">
+          <label for="studentPicker" id="roster-hint" style="display:none;">Pick from the student list (fills in both boxes)</label>
+          <select id="studentPicker" style="display:none;">
+            <option value="">— Choose a student —</option>
+          </select>
           <label for="studentName">Student name <span class="required-star">*</span></label>
-          <input type="text" id="studentName" list="roster-datalist" required placeholder="e.g. Jane Chebet" autocomplete="off">
-          <small id="roster-hint" style="display:none;">Start typing to pick from the student list — assessment no. fills in automatically.</small>
+          <input type="text" id="studentName" required placeholder="e.g. Jane Chebet" autocomplete="off">
         </div>
         <div class="field" id="group-name-field" style="display:none;">
           <label for="groupLabel">Group name (optional)</label>
@@ -538,8 +552,6 @@
   </footer>
 </main>
 
-<datalist id="roster-datalist"></datalist>
-
 <div id="lightbox"><button type="button" id="lightbox-close" aria-label="Close">✕</button><a id="lightbox-download" download title="Download photo">⬇</a><img id="lightbox-img" src="" alt=""></div>
 
 <div id="modal-overlay">
@@ -610,7 +622,7 @@ const SUBJECTS = [
 ];
 
 const MAX_FILE_BYTES = 300 * 1024 * 1024; // 300MB per file — matches the edge function's safe memory ceiling
-const APP_VERSION = '13.1';
+const APP_VERSION = '13.2';
 
 let currentSubject = SUBJECTS[0].id;
 let editingRecord = null;   // holds the record currently being edited, or null
@@ -710,9 +722,18 @@ function renderAdminBox(){
 }
 
 /* ---------------- Student roster (admin-managed, used for autofill) ---------------- */
+/* A real <select> is used instead of a text-input datalist — datalist's
+   "selection" behaviour is unreliable on mobile browsers (notably Android
+   Chrome and iOS Safari), which was filling the name box with the combined
+   "Name — Assessment No." text instead of splitting it into both fields.
+   A <select> fires a plain, universal "change" event everywhere. */
 
 function buildRosterMap(){
   return new Map(roster.map(s => [s.name.trim().toLowerCase(), s.assessmentNo]));
+}
+
+function rosterOptionLabel(s){
+  return s.assessmentNo ? `${s.name} — ${s.assessmentNo}` : s.name;
 }
 
 async function loadRoster(){
@@ -721,36 +742,50 @@ async function loadRoster(){
     if(!res.ok) return;
     roster = await res.json();
     rosterMap = buildRosterMap();
-    renderRosterDatalist();
-    document.getElementById('roster-hint').style.display = roster.length ? 'block' : 'none';
+    refreshAllRosterPickers();
   }catch{ /* roster is a convenience feature — fail silently */ }
 }
 
-function rosterOptionLabel(s){
-  return s.assessmentNo ? `${s.name} — ${s.assessmentNo}` : s.name;
+// Fills (or refills) a <select> with the current roster, keeping its
+// placeholder option. Marked with .roster-picker-target so loadRoster() can
+// find every picker on the page (the student picker + one per group member row).
+function fillRosterPicker(selectEl){
+  if(!selectEl) return;
+  selectEl.classList.add('roster-picker-target');
+  const placeholder = selectEl.querySelector('option[value=""]');
+  selectEl.innerHTML = '';
+  if(placeholder) selectEl.appendChild(placeholder);
+  else selectEl.insertAdjacentHTML('afterbegin', '<option value="">— Pick —</option>');
+  roster.forEach(s=>{
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = rosterOptionLabel(s);
+    selectEl.appendChild(opt);
+  });
 }
 
-function renderRosterDatalist(){
-  const dl = document.getElementById('roster-datalist');
-  // Each option shows "Full Name — Assessment No." in the dropdown so teachers
-  // can tell students apart at a glance; picking one is parsed back apart below.
-  dl.innerHTML = roster.map(s => `<option value="${escapeAttr(rosterOptionLabel(s))}">`).join('');
+// Re-fills every student-picker on the page (the individual field + one per
+// group member row) and shows/hides them based on whether a roster exists.
+// Called after loadRoster() and after any admin add/remove in the roster modal.
+function refreshAllRosterPickers(){
+  const hasRoster = roster.length > 0;
+  fillRosterPicker(document.getElementById('studentPicker'));
+  document.getElementById('studentPicker').style.display = hasRoster ? 'block' : 'none';
+  document.getElementById('roster-hint').style.display = hasRoster ? 'block' : 'none';
+  document.querySelectorAll('.member-picker').forEach(el=>{
+    fillRosterPicker(el);
+    el.style.display = hasRoster ? 'block' : 'none';
+  });
 }
 
-function applyRosterAutofill(nameInput, assessInput){
-  const raw = nameInput.value;
-  // Selected straight from the dropdown: "Full Name — Assessment No." — split
-  // it back into the two fields so the name box only ever holds the name.
-  const combined = raw.match(/^(.*?)\s+—\s+(.+)$/);
-  if(combined){
-    nameInput.value = combined[1].trim();
-    assessInput.value = combined[2].trim();
-    return;
+document.getElementById('studentPicker').addEventListener('change', function(){
+  const s = roster.find(st => st.id === this.value);
+  if(s){
+    document.getElementById('studentName').value = s.name;
+    document.getElementById('assessmentNo').value = s.assessmentNo || '';
   }
-  // Typed the name out manually (no dash) — still autofill if it matches exactly.
-  const match = rosterMap.get(raw.trim().toLowerCase());
-  if(match !== undefined && match !== '') assessInput.value = match;
-}
+  this.value = '';
+});
 
 function renderRosterList(){
   const wrap = document.getElementById('roster-list');
@@ -778,7 +813,7 @@ function renderRosterList(){
         if(!res.ok) throw new Error('Could not remove student');
         roster = await res.json();
         rosterMap = buildRosterMap();
-        renderRosterDatalist();
+        refreshAllRosterPickers();
         renderRosterList();
       }catch(err){
         alert(err.message);
@@ -835,7 +870,7 @@ document.getElementById('roster-add-btn').onclick = async ()=>{
     if(!res.ok) throw new Error(data.error || 'Could not add students');
     roster = data;
     rosterMap = buildRosterMap();
-    renderRosterDatalist();
+    refreshAllRosterPickers();
     document.getElementById('roster-bulk-input').value = '';
     document.getElementById('roster-hint').style.display = roster.length ? 'block' : 'none';
     renderRosterList();
@@ -1059,6 +1094,18 @@ function buildEntryCard(r){
     card.appendChild(audDl);
   }
 
+  // Anyone can tack on another task's marks to an existing submission — no
+  // login needed, same spirit as the original upload being open to all.
+  const quickAddWrap = document.createElement('div');
+  quickAddWrap.className = 'quick-add-task';
+  const quickAddBtn = document.createElement('button');
+  quickAddBtn.type = 'button';
+  quickAddBtn.className = 'link-btn quick-add-task-btn';
+  quickAddBtn.textContent = '+ Add a task';
+  quickAddBtn.onclick = ()=> openQuickAddTask(r, quickAddWrap);
+  quickAddWrap.appendChild(quickAddBtn);
+  card.appendChild(quickAddWrap);
+
   if(isAdmin()){
     const actions = document.createElement('div');
     actions.className = 'entry-actions';
@@ -1079,6 +1126,49 @@ function buildEntryCard(r){
   }
 
   return card;
+}
+
+function openQuickAddTask(r, wrap){
+  wrap.innerHTML = `
+    <div class="quick-task-form">
+      <input type="text" class="quick-task-label" placeholder="Task name (e.g. Task 2)">
+      <input type="number" class="quick-task-marks" placeholder="Marks" step="any">
+      <button type="button" class="primary quick-task-save">Save</button>
+      <button type="button" class="text-btn quick-task-cancel">Cancel</button>
+    </div>
+    <div class="quick-task-status"></div>
+  `;
+  const statusEl = wrap.querySelector('.quick-task-status');
+  const saveBtn = wrap.querySelector('.quick-task-save');
+  wrap.querySelector('.quick-task-cancel').onclick = ()=> renderEntries();
+  wrap.querySelector('.quick-task-marks').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') saveBtn.click(); });
+
+  saveBtn.onclick = async ()=>{
+    const label = wrap.querySelector('.quick-task-label').value.trim();
+    const marks = wrap.querySelector('.quick-task-marks').value.trim();
+    if(marks === '' || isNaN(Number(marks))){
+      statusEl.textContent = 'Enter the marks for this task.';
+      return;
+    }
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+    statusEl.textContent = '';
+    try{
+      const res = await fetch(`${API}/submissions`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: r.id, subject: r.subject, label, marks }),
+      });
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error || 'Could not add the task');
+      renderHeader();
+      renderEntries();
+    }catch(err){
+      statusEl.textContent = err.message;
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save';
+    }
+  };
 }
 
 async function handleDelete(r){
@@ -1165,14 +1255,22 @@ function addMemberRow(name, assessmentNo){
   const row = document.createElement('div');
   row.className = 'task-row member-row';
   row.innerHTML = `
-    <input type="text" class="member-name" list="roster-datalist" autocomplete="off" placeholder="Learner ${list.children.length + 1} name" value="${escapeAttr(name || '')}">
+    <select class="member-picker" style="display:none;"><option value="">— Pick —</option></select>
+    <input type="text" class="member-name" autocomplete="off" placeholder="Learner ${list.children.length + 1} name" value="${escapeAttr(name || '')}">
     <input type="text" class="member-assess" placeholder="Assess. no." value="${escapeAttr(assessmentNo || '')}">
     <button type="button" class="remove-task-btn" title="Remove member">✕</button>
   `;
   row.querySelector('.remove-task-btn').onclick = ()=> row.remove();
+  const picker = row.querySelector('.member-picker');
   const nameInput = row.querySelector('.member-name');
   const assessInput = row.querySelector('.member-assess');
-  nameInput.addEventListener('input', ()=> applyRosterAutofill(nameInput, assessInput));
+  fillRosterPicker(picker);
+  picker.style.display = roster.length ? 'block' : 'none';
+  picker.addEventListener('change', ()=>{
+    const s = roster.find(st => st.id === picker.value);
+    if(s){ nameInput.value = s.name; assessInput.value = s.assessmentNo || ''; }
+    picker.value = '';
+  });
   list.appendChild(row);
 }
 
