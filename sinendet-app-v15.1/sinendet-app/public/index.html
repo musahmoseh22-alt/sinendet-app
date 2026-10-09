@@ -676,7 +676,7 @@ const SUBJECTS = [
 
 const MAX_FILE_BYTES = 350 * 1024 * 1024; // 350MB per file — see upload-finalize.js for why
 const UPLOAD_CHUNK_BYTES = 2 * 1024 * 1024; // 2MB pieces — small enough to transfer well inside Netlify's 40s per-request limit even on a weak connection
-const APP_VERSION = '15.1';
+const APP_VERSION = '15.2';
 
 let currentSubject = SUBJECTS[0].id;
 let editingRecord = null;   // holds the record currently being edited, or null
@@ -1762,7 +1762,13 @@ async function compressImage(file){
 // Best-effort video compression for larger clips. Only attempted when the
 // browser supports MediaRecorder + canvas.captureStream; silently falls back
 // to the original file on any error, timeout, or lack of support (which is
-// common on iPhones) so an upload is never blocked by this.
+// common on iPhones) so an upload is never blocked by this. Re-encoding only
+// redraws the picture onto a canvas, which has no sound of its own — the
+// original clip's audio track is pulled separately (via the video element's
+// own captureStream) and merged in below, so the compressed result keeps its
+// audio instead of coming out silent. If the browser can't give us that
+// audio track at all, compression is skipped entirely and the original file
+// (with its sound intact) is used instead.
 async function compressVideo(file, onProgress){
   const THRESHOLD = 20 * 1024 * 1024;
   if(file.size < THRESHOLD) return file;
@@ -1793,14 +1799,28 @@ async function compressVideo(file, onProgress){
       canvas.height = Math.round(video.videoHeight * scale);
       const ctx = canvas.getContext('2d');
 
-      const mimeCandidates = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+      // Pull the original clip's audio track so the compressed version
+      // keeps its sound. If this browser can't give us one, skip
+      // compression rather than silently ship a muted video.
+      let audioTracks = [];
+      try{
+        const src = video.captureStream ? video.captureStream() : (video.mozCaptureStream ? video.mozCaptureStream() : null);
+        if(src) audioTracks = src.getAudioTracks();
+      }catch(e){ /* no audio capture available on this browser */ }
+      if(!audioTracks.length){ finish(file); return; }
+
+      const mimeCandidates = [
+        'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8', 'video/webm',
+      ];
       const mimeType = mimeCandidates.find(t => window.MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t));
       if(!mimeType){ finish(file); return; }
 
       let recorder;
       try{
-        const stream = canvas.captureStream(30);
-        recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 1_500_000 });
+        const canvasStream = canvas.captureStream(30);
+        const combinedStream = new MediaStream([...canvasStream.getVideoTracks(), ...audioTracks]);
+        recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 1_500_000 });
       }catch(e){ finish(file); return; }
 
       const chunks = [];
